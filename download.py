@@ -138,9 +138,8 @@ def download(
     scraper=args.scraper,
     save_uncompressed=args.save_uncompressed,
     memoize=args.scraper_memoize,
-    arch_meta=not args.sqlite_meta
+    arch_meta=not args.sqlite_meta,
 ):
-
     uid, url = url_entry
     url = url.strip()
     fid = "{:07d}-{}".format(uid, sha256(url.encode()).hexdigest())
@@ -166,11 +165,10 @@ def download(
         scrape = newspaper_scraper
     elif scraper == "raw":
         scrape = raw_scraper
-
     text, meta = scrape(url, memoize)
 
     ext = tldextract.extract(url)
-    domain = '.'.join([x for x in ext if x])
+    domain = ".".join([x for x in [ext.subdomain, ext.domain, ext.suffix] if x])
     meta["domain"] = domain
 
     if text is None or text.strip() == "":
@@ -221,11 +219,11 @@ def archive_chunk(cid, cdata, out_dir, fmt, arch_meta):
 
 
 def load_state(url_file):
-    ckptfile = url_file + '.ckpt'
+    ckptfile = url_file + ".ckpt"
     if op.exists(ckptfile):
         with open(ckptfile) as fp:
             r = fp.read()
-            if r == '':
+            if r == "":
                 return 0
             else:
                 return int(r)
@@ -234,14 +232,15 @@ def load_state(url_file):
 
 
 def save_state(url_file, cid):
-    ckptfile = url_file + '.ckpt'
-    with open(ckptfile, 'w') as fp:
+    ckptfile = url_file + ".ckpt"
+    with open(ckptfile, "w") as fp:
         fp.write(str(cid))
 
 
 def sqlite_conn():
-    conn = sqlite3.connect('metadata.db')
-    conn.execute('''
+    conn = sqlite3.connect("metadata.db")
+    conn.execute(
+        """
     CREATE TABLE IF NOT EXISTS metadata (
         fid char(64) not null primary key,
         url varchar(2048) not null,
@@ -251,13 +250,18 @@ def sqlite_conn():
         scraper varchar(255) not null,
         success boolean not null
     );
-    ''')
-    conn.execute('''
+    """
+    )
+    conn.execute(
+        """
     CREATE INDEX IF NOT EXISTS ix_meta_url ON metadata(url);
-    ''')
-    conn.execute('''
+    """
+    )
+    conn.execute(
+        """
     CREATE INDEX IF NOT EXISTS ix_meta_domain ON metadata(domain);
-    ''')
+    """
+    )
 
     return conn
 
@@ -275,9 +279,11 @@ if __name__ == "__main__":
         url_entries = load_urls(fh, args.max_urls)
 
         pool = mpl.Pool(args.n_procs)
-        total = linecount(args.url_file)//args.chunk_size
-        print('Total chunks: ', total)
-        chunk_iterator = tqdm(enumerate(chunks(url_entries, args.chunk_size, start_elem)), total=total)
+        total = linecount(args.url_file) // args.chunk_size
+        print("Total chunks: ", total)
+        chunk_iterator = tqdm(
+            enumerate(chunks(url_entries, args.chunk_size, start_elem)), total=total
+        )
 
         # display already-downloaded chunks on progress bar
         chunk_iterator.update(start_chnk)
@@ -306,7 +312,11 @@ if __name__ == "__main__":
             else:
                 cdata = list(pool.imap(download, chunk, chunksize=1))
 
-            tqdm.write("{} / {} downloads timed out".format(len(chunk) - len(cdata), len(chunk)))
+            tqdm.write(
+                "{} / {} downloads timed out".format(
+                    len(chunk) - len(cdata), len(chunk)
+                )
+            )
             tqdm.write("Chunk time: {} seconds".format(time.time() - t1))
 
             # write metadata to sqlite
@@ -320,7 +330,7 @@ if __name__ == "__main__":
                             meta["elapsed"],
                             meta["word_count"],
                             meta["scraper"],
-                            True
+                            True,
                         )
                     else:
                         params = (
@@ -330,18 +340,27 @@ if __name__ == "__main__":
                             None,
                             None,
                             meta["scraper"],
-                            False
+                            False,
                         )
-                    cur.execute("insert or ignore into metadata (fid, url, domain, elapsed, word_count, scraper, success) values (?, ?, ?, ?, ?, ?, ?)", params)
+                    cur.execute(
+                        "insert or ignore into metadata (fid, url, domain, elapsed, word_count, scraper, success) values (?, ?, ?, ?, ?, ?, ?)",
+                        params,
+                    )
                 conn.commit()
 
             # archive and save this chunk to file
             if args.compress:
                 tqdm.write("Compressing...")
                 t2 = time.time()
-                count = archive_chunk(cid, cdata, args.output_dir, args.compress_fmt, not args.sqlite_meta)
+                count = archive_chunk(
+                    cid, cdata, args.output_dir, args.compress_fmt, not args.sqlite_meta
+                )
                 tqdm.write("Archive created in {} seconds".format(time.time() - t2))
-            tqdm.write("{} out of {} URLs yielded content\n".format(len(list(filter(lambda x: x and x[0], cdata))), len(chunk)))
+            tqdm.write(
+                "{} out of {} URLs yielded content\n".format(
+                    len(list(filter(lambda x: x and x[0], cdata))), len(chunk)
+                )
+            )
 
             save_state(args.url_file, cid * args.chunk_size)
 
